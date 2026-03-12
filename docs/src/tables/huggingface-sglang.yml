@@ -1,3 +1,4 @@
+# Table Configuration - HuggingFace SGLang Inference
 columns:
   - field: framework_version
     header: "Framework"
