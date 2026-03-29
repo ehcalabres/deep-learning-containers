@@ -1,3 +1,4 @@
+import json
 import requests
 
 from fastapi import FastAPI, Request, Response
@@ -36,14 +37,15 @@ def parse_custom_attributes(value: str | None) -> dict[str, str]:
     if not value:
         return {}
 
-    items = {}
-    for part in value.split(","):
-        part = part.strip()
-        if "=" not in part:
-            continue
-        k, v = part.split("=", 1)
-        items[k.strip()] = v.strip()
-    return items
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    return {str(k).strip(): str(v).strip() for k, v in parsed.items()}
 
 
 def resolve_route(custom_attrs: dict[str, str]) -> str | None:
@@ -99,8 +101,8 @@ def build_routing_error(
     return (
         f"{base_msg} You must provide routing via CustomAttributes.\n"
         f"Examples:\n"
-        f"  route=/v1/audio/speech\n"
-        f"  task=text-to-speech\n\n"
+        f'  {{"route": "/v1/audio/speech"}}\n'
+        f'  {{"task": "text-to-speech"}}\n\n'
         f"Allowed routes: {sorted(allowed_routes)}\n"
         f"Supported tasks: {sorted(task_to_route.keys())}"
     )
@@ -147,7 +149,8 @@ async def invocations(request: Request):
         return JSONResponse(
             content={
                 "error": f"Method not allowed for route {route}. "
-                f"Use CustomAttributes method={allowed_methods}. Default is POST."
+                f'Use CustomAttributes JSON like {{"route":"{route}","method":"{allowed_methods}"}}. '
+                f"Default is POST."
             },
             status_code=400,
         )
