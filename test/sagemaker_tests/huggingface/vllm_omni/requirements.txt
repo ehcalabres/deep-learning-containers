@@ -27,5 +27,3 @@ invoke
 gitpython
 toml
 huggingface_hub
-fastapi
-httpx<1

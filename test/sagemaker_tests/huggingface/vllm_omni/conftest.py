@@ -27,7 +27,11 @@ from botocore.exceptions import ClientError
 from sagemaker import LocalSession, Session
 from sagemaker.pytorch import PyTorch
 
-from .utils import image_utils, get_ecr_registry
+dir_path = os.path.dirname(os.path.realpath(__file__))
+if dir_path not in sys.path:
+    sys.path.insert(0, dir_path)
+
+from utils import image_utils, get_ecr_registry
 
 NO_P4_REGIONS = [
     "af-south-1",
@@ -78,16 +82,13 @@ logging.getLogger("auth.py").setLevel(logging.INFO)
 logging.getLogger("connectionpool.py").setLevel(logging.INFO)
 
 
-dir_path = os.path.dirname(os.path.realpath(__file__))
-
-
 def pytest_addoption(parser):
     parser.addoption("--build-image", "-D", action="store_true")
     parser.addoption("--build-base-image", "-B", action="store_true")
     parser.addoption("--aws-id")
     parser.addoption("--instance-type")
     parser.addoption("--accelerator-type", default=None)
-    parser.addoption("--docker-base-name", default="huggingface_pytorch")
+    parser.addoption("--docker-base-name", default="huggingface_vllm_omni")
     parser.addoption("--region", default="us-west-2")
     parser.addoption("--framework-version", default="")
     parser.addoption(
@@ -141,7 +142,7 @@ def pytest_collection_modifyitems(session, config, items):
 
         report_generator = TestReportGenerator(items, is_sagemaker=True)
         report_generator.generate_coverage_doc(
-            framework="huggingface_pytorch", job_type="inference"
+            framework="huggingface_vllm_omni", job_type="inference"
         )
 
 

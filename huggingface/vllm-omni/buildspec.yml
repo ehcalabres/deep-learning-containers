@@ -2,9 +2,9 @@ account_id: &ACCOUNT_ID <set-$ACCOUNT_ID-in-environment>
 prod_account_id: &PROD_ACCOUNT_ID 763104351884
 region: &REGION <set-$REGION-in-environment>
 base_framework: &BASE_FRAMEWORK vllm-omni
-framework: &FRAMEWORK !join [ "huggingface_", *BASE_FRAMEWORK]
-version: &VERSION "0.16.0"
-short_version: &SHORT_VERSION "0.16"
+framework: &FRAMEWORK huggingface_vllm_omni
+version: &VERSION "0.18.0"
+short_version: &SHORT_VERSION "0.18"
 arch_type: &ARCH_TYPE x86_64
 autopatch_build: "False"
 
@@ -22,19 +22,10 @@ context:
     deep_learning_container:
       source: ../../src/deep_learning_container.py
       target: deep_learning_container.py
-    start_cuda_compat:
-      source: build_artifacts/start_cuda_compat.sh
-      target: start_cuda_compat.sh
-    sagemaker_entrypoint:
-      source: build_artifacts/sagemaker_entrypoint.sh
-      target: sagemaker_entrypoint.sh
-    sagemaker_vllm_omni_proxy:
-      source: build_artifacts/sagemaker_vllm_omni_proxy.py
-      target: sagemaker_vllm_omni_proxy.py
 
 
 images:
-  BuildHuggingFaceVllmGpuPy312Cu129DockerImage:
+  BuildHuggingFaceVllmOmniGpuPy312Cu129DockerImage:
     <<: *BUILD_REPOSITORY
     context:
       <<: *BUILD_CONTEXT

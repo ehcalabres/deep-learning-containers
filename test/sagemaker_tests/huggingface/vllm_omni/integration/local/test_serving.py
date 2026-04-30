@@ -13,6 +13,8 @@
 from __future__ import absolute_import
 
 from contextlib import contextmanager
+from pathlib import Path
+import sys
 
 import pytest
 from sagemaker.model import Model
@@ -20,8 +22,12 @@ from sagemaker.predictor import Predictor
 from sagemaker.serializers import JSONSerializer
 from sagemaker.deserializers import JSONDeserializer
 
-from ...integration import ROLE, ensure_model_downloaded
-from ...utils import local_mode_utils
+VLLM_OMNI_TEST_DIR = Path(__file__).resolve().parents[2]
+if str(VLLM_OMNI_TEST_DIR) not in sys.path:
+    sys.path.insert(0, str(VLLM_OMNI_TEST_DIR))
+
+from integration import ROLE, ensure_model_downloaded
+from utils import local_mode_utils
 
 
 @contextmanager
@@ -57,14 +63,15 @@ def _predictor(image, sagemaker_local_session, instance_type):
 
 
 def _assert_vllm_omni_image_generation(predictor):
-    """Test vLLM Omni inference image generation API."""
+    """Test vLLM-Omni inference through the bundled SageMaker middleware."""
     predictor.serializer = JSONSerializer()
     predictor.deserializer = JSONDeserializer()
 
     data = {
+        "task": "text-to-image",
         "prompt": "A cat sitting on a mat.",
     }
-    output = predictor.predict(data, custom_attributes="task=text-to-image")
+    output = predictor.predict(data)
 
     assert output is not None
     assert "data" in output
@@ -76,6 +83,6 @@ def _assert_vllm_omni_image_generation(predictor):
 def test_vllm_local_image_generation(
     docker_image, sagemaker_local_session, instance_type
 ):
-    """Test vLLM Omni local deployment with image generation API."""
+    """Test vLLM-Omni local deployment with image generation API."""
     with _predictor(docker_image, sagemaker_local_session, instance_type) as predictor:
         _assert_vllm_omni_image_generation(predictor)

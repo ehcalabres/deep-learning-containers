@@ -1,4 +1,4 @@
-ARG FINAL_BASE_IMAGE=763104351884.dkr.ecr.us-west-2.amazonaws.com/vllm:0.16.0-gpu-py312-cu129-ubuntu22.04-sagemaker
+ARG FINAL_BASE_IMAGE=763104351884.dkr.ecr.us-west-2.amazonaws.com/vllm:omni-sagemaker-cuda-v1
 FROM ${FINAL_BASE_IMAGE} AS vllm-base
 
 LABEL maintainer="Amazon AI"
@@ -19,18 +19,8 @@ RUN pip install --upgrade pip && \
 
 FROM vllm-base AS sagemaker
 ENV HF_HUB_ENABLE_HF_TRANSFER="1" \
-    HF_HUB_USER_AGENT_ORIGIN="aws:sagemaker:gpu-cuda:inference:hf-vllm"
-
-# Copy CUDA compat and entrypoint scripts 
-COPY start_cuda_compat.sh /usr/local/bin/start_cuda_compat.sh
-COPY sagemaker_entrypoint.sh /usr/local/bin/sagemaker_entrypoint.sh
-
-# Copy the vLLM Omni proxy script
-COPY sagemaker_vllm_omni_proxy.py /usr/local/bin/sagemaker_vllm_omni_proxy.py
-
-RUN chmod +x /usr/local/bin/start_cuda_compat.sh \
- && chmod +x /usr/local/bin/sagemaker_entrypoint.sh \
- && chmod +x /usr/local/bin/sagemaker_vllm_omni_proxy.py
+    HF_HUB_USER_AGENT_ORIGIN="aws:sagemaker:gpu-cuda:inference:hf-vllm-omni" \
+    PYTHONPATH="/usr/local/bin:${PYTHONPATH}"
 
 RUN HOME_DIR=/root \
  && uv pip install --system --upgrade pip requests PTable \
@@ -41,9 +31,5 @@ RUN HOME_DIR=/root \
  && chmod +x ${HOME_DIR}/oss_compliance/generate_oss_compliance.sh \
  && ${HOME_DIR}/oss_compliance/generate_oss_compliance.sh ${HOME_DIR} python3 \
  && rm -rf ${HOME_DIR}/oss_compliance*
-
-RUN uv pip install --system --no-cache-dir vllm-omni==0.16.0
-
-RUN uv pip install --system --no-cache-dir fastapi uvicorn
 
 ENTRYPOINT ["/usr/local/bin/sagemaker_entrypoint.sh"]

@@ -1820,6 +1820,7 @@ def get_framework_and_version_from_tag(image_uri):
         "huggingface_pytorch_trcomp",
         "huggingface_tensorflow",
         "huggingface_pytorch",
+        "huggingface_vllm_omni",
         "huggingface_vllm",
         "huggingface_sglang",
         "stabilityai_pytorch",
@@ -1932,6 +1933,7 @@ def get_os_version_from_image_uri(image_uri):
 
 def get_framework_from_image_uri(image_uri):
     framework_map = {
+        "huggingface-vllm-omni": "huggingface_vllm_omni",
         "huggingface-tensorflow-trcomp": "huggingface_tensorflow_trcomp",
         "huggingface-tensorflow": "huggingface_tensorflow",
         "huggingface-pytorch-trcomp": "huggingface_pytorch_trcomp",
