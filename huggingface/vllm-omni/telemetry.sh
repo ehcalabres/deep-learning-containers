@@ -3,8 +3,8 @@
 if [ -f /usr/local/bin/deep_learning_container.py ] && [[ -z "${OPT_OUT_TRACKING}" || "${OPT_OUT_TRACKING,,}" != "true" ]]; then
     (
         python /usr/local/bin/deep_learning_container.py \
-            --framework "huggingface_vllm-omni" \
-            --framework-version "0.16.0" \
+            --framework "huggingface_vllm_omni" \
+            --framework-version "0.18.0" \
             --container-type "general" \
             &>/dev/null &
     )
