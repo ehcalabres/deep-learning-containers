@@ -1,0 +1,316 @@
+FROM ubuntu:22.04 AS base_image
+
+LABEL maintainer="Amazon AI"
+LABEL dlc_major_version="2"
+LABEL com.amazonaws.sagemaker.capabilities.accept-bind-to-port=true
+LABEL com.amazonaws.sagemaker.capabilities.multi-models=true
+
+ARG PYTHON=python3
+ARG PYTHON_VERSION=3.12.8
+ARG MINIFORGE3_VERSION=24.11.3-0
+ARG OPEN_MPI_VERSION=4.1.7
+ARG MMS_VERSION=1.1.11
+
+# PyTorch Binaries and versions.
+ARG TORCH_URL=https://framework-binaries.s3.us-west-2.amazonaws.com/pytorch/v2.6.0/x86/cpu/torch-2.6.0%2Bcpu-cp312-cp312-linux_x86_64.whl
+ARG TORCHVISION_URL=https://framework-binaries.s3.us-west-2.amazonaws.com/pytorch/v2.6.0/x86/cpu/torchvision-0.21.0%2Bcpu-cp312-cp312-linux_x86_64.whl
+ARG TORCHAUDIO_URL=https://framework-binaries.s3.us-west-2.amazonaws.com/pytorch/v2.6.0/x86/cpu/torchaudio-2.6.0%2Bcpu-cp312-cp312-linux_x86_64.whl
+ARG TORCHTEXT_URL=https://framework-binaries.s3.us-west-2.amazonaws.com/pytorch/v2.6.0/x86/cpu/torchtext-0.18.0%2Bcpu-cp312-cp312-linux_x86_64.whl
+ARG TORCHDATA_URL=https://framework-binaries.s3.us-west-2.amazonaws.com/pytorch/v2.6.0/x86/cpu/torchdata-0.10.1%2Bcpu-py3-none-any.whl
+
+# HF ARGS
+ARG TRANSFORMERS_VERSION=4.57.6
+ARG HUGGINGFACE_HUB_VERSION=0.36.2
+ARG DIFFUSERS_VERSION=0.38.0
+ARG PEFT_VERSION=0.18.1
+ARG ACCELERATE_VERSION=1.12.0
+# Install the latest version of the sagemaker-huggingface-inference-toolkit from the git repository
+# until version 2.7.0 is released in PyPI.
+# ARG SAGEMAKER_HF_INFERENCE_VERSION=2.7.0
+ARG SAGEMAKER_HF_INFERENCE_VERSION="git+https://github.com/aws/sagemaker-huggingface-inference-toolkit.git@f0c3eb2"
+
+# This arg required to stop docker build waiting for region configuration while installing tz data from ubuntu 20
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Python won’t try to write .pyc or .pyo files on the import of source modules
+# Force stdin, stdout and stderr to be totally unbuffered. Good for logging
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/opt/conda/lib:${LD_LIBRARY_PATH}"
+ENV PYTHONIOENCODING=UTF-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PATH=/opt/conda/bin:$PATH
+
+# Set Env Variables for the images
+ENV TEMP=/tmp
+ENV MKL_THREADING_LAYER=GNU
+
+ENV DLC_CONTAINER_TYPE=inference
+
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get install -y --no-install-recommends \
+    automake \
+    build-essential \
+    ca-certificates \
+    cmake \
+    curl \
+    emacs \
+    git \
+    jq \
+    llvm \
+    libcurl4-openssl-dev \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    liblzma-dev \
+    libncurses5-dev \
+    libncursesw5-dev \
+    libsm6 \
+    libssl-dev \
+    libsqlite3-dev \
+    libxext6 \
+    libxrender-dev \
+    libbz2-dev \
+    libreadline-dev \
+    tk-dev \
+    xz-utils \
+    zlib1g-dev \
+    unzip \
+    vim \
+    wget \
+    openjdk-21-jdk \
+    libjpeg-dev \
+    libpng-dev \
+    libffi-dev \
+    ffmpeg \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install OpenMPI
+RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-${OPEN_MPI_VERSION}.tar.gz \
+    && gunzip -c openmpi-$OPEN_MPI_VERSION.tar.gz | tar xf - \
+    && cd openmpi-$OPEN_MPI_VERSION \
+    && ./configure --prefix=/home/.openmpi \
+    && make all install \
+    && cd .. \
+    && rm openmpi-$OPEN_MPI_VERSION.tar.gz \
+    && rm -rf openmpi-$OPEN_MPI_VERSION
+
+# The ENV variables declared below are changed in the previous section
+# Grouping these ENV variables in the first section causes
+# ompi_info to fail. This is only observed in CPU containers
+ENV PATH="$PATH:/home/.openmpi/bin"
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/home/.openmpi/lib/"
+RUN ompi_info --parsable --all | grep mpi_built_with_cuda_support:value
+
+# Install CondaForge miniconda
+RUN curl -L -o ~/miniforge3.sh https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE3_VERSION}/Miniforge3-${MINIFORGE3_VERSION}-Linux-x86_64.sh \
+    && chmod +x ~/miniforge3.sh \
+    && ~/miniforge3.sh -b -p /opt/conda \
+    && rm ~/miniforge3.sh \
+    && /opt/conda/bin/conda install -c conda-forge \
+    python=${PYTHON_VERSION} \
+    cython \
+    "mkl<2024.1.0" \
+    mkl-include \
+    parso \
+    scipy \
+    typing \
+    h5py \
+    requests \
+    libgcc \
+    "cmake<=3.24.4" \
+    packaging \
+    "awscli<2" \
+    boto3 \
+    pyyaml \
+    conda-content-trust \
+    charset-normalizer \
+    requests \
+    "idna>=3.7" \
+    "tqdm>=4.66.3" \
+    "zstandard>=0.22.0" \
+    && /opt/conda/bin/conda clean -afy \
+    && rm -rf /etc/apt/sources.list.d/*
+
+# symlink pip for OS use
+RUN pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+    && ln -s /opt/conda/bin/pip /usr/local/bin/pip3
+
+# Install Common python packages
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -U \
+    "opencv-python==4.11.0.86" \
+    "pyopenssl>=24.0.0" \
+    "cryptography>=42.0.5" \
+    "ipython>=8.10.0,<9.0" \
+    "awscli<2" \
+    "urllib3>=2.6" \
+    "brotli>1.1" \
+    "prompt-toolkit<3.0.39" \
+    # Fix jaraco.context vulnerability 
+    "setuptools>=81.0.0"
+
+# Ensure PyTorch did not get installed from Conda or pip, prior to now
+# is CPU image, removing nvgpu
+# Any Nvidia installs for the DLC will be below, removing nvidia and cuda packages from pip here
+# Even the GPU image would not have nvidia or cuda packages in PIP.
+RUN pip uninstall -y torch torchvision torchaudio multi-model-server
+
+# Install AWS-PyTorch, and other torch packages
+RUN pip install --no-cache-dir -U \
+    enum-compat==0.0.3 \
+    "Pillow>=9.0.0" \
+    ${TORCH_URL} \
+    ${TORCHVISION_URL} \
+    ${TORCHAUDIO_URL} \
+    ${TORCHTEXT_URL} \
+    ${TORCHDATA_URL}
+
+
+WORKDIR /
+
+RUN pip install --no-cache-dir \
+    multi-model-server==$MMS_VERSION \
+    sagemaker-inference
+
+# Patches
+# py-vuln: 71064
+RUN pip install --no-cache-dir -U "requests>=2.32.3"
+
+# add necessary certificate for aws sdk cpp download
+RUN mkdir -p /etc/pki/tls/certs && cp /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt
+
+# create user and folders
+RUN useradd -m model-server \
+    && mkdir -p /home/model-server/tmp /opt/ml/model \
+    && chown -R model-server /home/model-server /opt/ml/model
+
+# add MMS entrypoint
+COPY mms-entrypoint.py /usr/local/bin/dockerd-entrypoint.py
+COPY config.properties /etc/sagemaker-mms.properties
+RUN chmod +x /usr/local/bin/dockerd-entrypoint.py
+
+# add telemetry
+COPY deep_learning_container.py /usr/local/bin/deep_learning_container.py
+RUN chmod +x /usr/local/bin/deep_learning_container.py
+
+#################################
+# Hugging Face specific section #
+#################################
+
+# Pre-install kenlm without build isolation so it uses system cmake
+RUN pip install --no-cache-dir --no-build-isolation kenlm
+
+# install Hugging Face libraries and its dependencies
+RUN pip install --no-cache-dir \
+    huggingface_hub==${HUGGINGFACE_HUB_VERSION} \
+    transformers[sentencepiece,audio,vision]==${TRANSFORMERS_VERSION} \
+    diffusers==${DIFFUSERS_VERSION} \
+    peft==${PEFT_VERSION} \
+    accelerate==${ACCELERATE_VERSION} \
+    # Install the latest version of the sagemaker-huggingface-inference-toolkit from the git repository
+    # until version 2.7.0 is released in PyPI.
+    # sagemaker-huggingface-inference-toolkit==${SAGEMAKER_HF_INFERENCE_VERSION} \
+    ${SAGEMAKER_HF_INFERENCE_VERSION} \
+    "opencv-python==4.11.0.86"
+
+# Safety 84961 / CVE-2026-24049 (wheel unpack); Safety 85151 (protobuf json_format recursion)
+RUN pip install --no-cache-dir -U "wheel>=0.46.2" "protobuf>=5.29.6"
+
+ENV HF_HUB_USER_AGENT_ORIGIN="aws:sagemaker:cpu:inference:regular"
+
+#####################
+# IPEX installation #
+#####################
+
+# Skip ipex installation for now due to error: 0.18.0+cpu, the required version for compiling is 0.18.0+cpu...
+# Install IPEx and its dependencies
+# from source is mandatory for cutomized AWS PyTorch binaries: https://github.com/intel/intel-extension-for-pytorch/issues/317
+# RUN pip install --no-cache-dir intel-openmp tbb pyyaml
+# RUN cd /opt/ \
+#  && mkdir -p ipex \
+#  && cd /opt/ipex \
+#  && wget https://github.com/intel/intel-extension-for-pytorch/raw/v2.3.0%2Bcpu/scripts/compile_bundle.sh \
+#  && MODE=3 bash compile_bundle.sh \
+#  && rm -rf /opt/ipex && cd /opt/
+
+# IPEx installation installs the numpy==1.25.1. That causes a pip check failure due to incompatibility with numba.
+# Re-installing numpy after IPEx installation to get the appropriate numpy version and fix pip checks.
+# RUN pip install --no-cache-dir \
+#     "numpy<1.25" \
+#     "pyyaml>=5.4"
+
+RUN HOME_DIR=/root \
+    && curl -o ${HOME_DIR}/oss_compliance.zip https://aws-dlinfra-utilities.s3.amazonaws.com/oss_compliance.zip \
+    && unzip ${HOME_DIR}/oss_compliance.zip -d ${HOME_DIR}/ \
+    && cp ${HOME_DIR}/oss_compliance/test/testOSSCompliance /usr/local/bin/testOSSCompliance \
+    && chmod +x /usr/local/bin/testOSSCompliance \
+    && chmod +x ${HOME_DIR}/oss_compliance/generate_oss_compliance.sh \
+    && ${HOME_DIR}/oss_compliance/generate_oss_compliance.sh ${HOME_DIR} ${PYTHON} \
+    && rm -rf ${HOME_DIR}/oss_compliance*
+
+RUN curl -o /license.txt  https://aws-dlc-licenses.s3.amazonaws.com/pytorch-2.6/license.txt
+
+# Keep openjdk-21-jdk and openjdk-21-jre-headless installed to avoid being removed by apt-get autoremove
+RUN apt-mark manual openjdk-21-jdk openjdk-21-jre-headless
+
+######################################################
+# Fix ffmpeg vulnerabilities by building from source #
+# CVE-2024-35366 / CVE-2024-35367 / CVE-2024-35368   #
+######################################################
+RUN apt-get purge -y ffmpeg libav* || true && apt-get autoremove -y
+
+ARG FFMPEG_TAG=n8.1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nasm \
+    yasm \
+    libmp3lame-dev \
+    libopus-dev \
+    libvorbis-dev \
+    libvpx-dev \
+    libx264-dev \
+    libx265-dev \
+    && git clone https://git.ffmpeg.org/ffmpeg.git /tmp/ffmpeg \
+    && cd /tmp/ffmpeg \
+    && git checkout "${FFMPEG_TAG}" \
+    && ./configure \
+    --prefix=/usr/local \
+    --disable-debug \
+    --disable-doc \
+    --enable-gpl \
+    --enable-libmp3lame \
+    --enable-libopus \
+    --enable-libvorbis \
+    --enable-libvpx \
+    --enable-libx264 \
+    --enable-libx265 \
+    && make -j"$(nproc)" \
+    && make install \
+    && which ffmpeg \
+    && ffmpeg -version \
+    && ffprobe -version \
+    && rm -rf /tmp/ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fix CVE-2024-53920 and CVE-2025-1244: emacs is not essential for core functionality and has known
+# vulnerabilities, so we remove it
+RUN apt-get remove -y --purge emacs emacs-common \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+## Cleanup ##
+RUN pip cache purge \
+    && rm -rf /tmp/tmp* \
+    && rm -iRf /root/.cache \
+    && rm -rf /opt/llvm-project \
+    && rm -rf opt/intel-extension-for-pytorch
+
+EXPOSE 8080 8081
+ENTRYPOINT ["python", "/usr/local/bin/dockerd-entrypoint.py"]
+CMD ["serve"]
