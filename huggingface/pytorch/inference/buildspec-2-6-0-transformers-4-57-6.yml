@@ -3,7 +3,7 @@ region: &REGION <set-$REGION-in-environment>
 base_framework: &BASE_FRAMEWORK pytorch
 framework: &FRAMEWORK !join [ "huggingface_", *BASE_FRAMEWORK]
 version: &VERSION 2.6.0
-short_version: &SHORT_VERSION "2.6"
+short_version: &SHORT_VERSION "2.6-transformers-4.57.6"
 contributor: huggingface
 arch_type: x86
 
