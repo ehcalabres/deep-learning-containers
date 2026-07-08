@@ -245,17 +245,21 @@ for framework in ${FRAMEWORKS}; do
     fi
 
     # -----------------------------------------------------------------
-    # Update configured PyPI package pins if configured
+    # Update configured Hugging Face PyPI package pins if configured.
     # -----------------------------------------------------------------
-    has_pypi_packages=$(yq eval ".frameworks.${framework}.pypi_packages // null" "${TRACKER_FILE}")
-    if [[ "${has_pypi_packages}" != "null" ]]; then
-      package_entries_json=$(yq eval -o=json ".frameworks.${framework}.pypi_packages" "${TRACKER_FILE}")
-      dockerfile_entries_json=$(yq eval -o=json ".frameworks.${framework}.dockerfiles // []" "${TRACKER_FILE}")
-      package_updates=$(update_pypi_packages "${config_entries_json}" "${dockerfile_entries_json}" "${package_entries_json}")
-      if [[ -n "${package_updates}" ]]; then
-        updated_files="${updated_files}"$'\n'"${package_updates}"
-        echo "${framework}: Updated PyPI package pins:"
-        echo "${package_updates}"
+    has_huggingface_pypi_packages=$(yq eval ".frameworks.${framework}.huggingface_pypi_packages // null" "${TRACKER_FILE}")
+    if [[ "${has_huggingface_pypi_packages}" != "null" ]]; then
+      if [[ "${framework}" != huggingface-* ]]; then
+        echo "::warning::${framework}: huggingface_pypi_packages is only supported for Hugging Face DLCs. Skipping package pin updates."
+      else
+        package_entries_json=$(yq eval -o=json ".frameworks.${framework}.huggingface_pypi_packages" "${TRACKER_FILE}")
+        dockerfile_entries_json=$(yq eval -o=json ".frameworks.${framework}.dockerfiles // []" "${TRACKER_FILE}")
+        package_updates=$(update_huggingface_pypi_packages "${config_entries_json}" "${dockerfile_entries_json}" "${package_entries_json}")
+        if [[ -n "${package_updates}" ]]; then
+          updated_files="${updated_files}"$'\n'"${package_updates}"
+          echo "${framework}: Updated Hugging Face PyPI package pins:"
+          echo "${package_updates}"
+        fi
       fi
     fi
 

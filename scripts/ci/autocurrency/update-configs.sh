@@ -152,9 +152,9 @@ get_latest_pypi_version() {
 }
 
 ###############################################################################
-# update_pypi_packages(config_entries_json, dockerfile_entries_json, packages_json)
-#   Updates configured build.<config_key> version pins in image config files and
-#   matching Dockerfile ARG defaults from the latest PyPI package versions.
+# update_huggingface_pypi_packages(config_entries_json, dockerfile_entries_json, packages_json)
+#   Updates configured Hugging Face build.<config_key> version pins in image
+#   config files and matching Dockerfile ARG defaults from latest PyPI versions.
 #   Echoes the list of updated file paths (one per line).
 #
 #   Arguments:
@@ -163,10 +163,10 @@ get_latest_pypi_version() {
 #     packages_json          — JSON array of package mappings:
 #                              package, config_key, dockerfile_arg
 ###############################################################################
-update_pypi_packages() {
-  local config_entries_json="${1:?Usage: update_pypi_packages CONFIG_ENTRIES_JSON DOCKERFILE_ENTRIES_JSON PACKAGES_JSON}"
+update_huggingface_pypi_packages() {
+  local config_entries_json="${1:?Usage: update_huggingface_pypi_packages CONFIG_ENTRIES_JSON DOCKERFILE_ENTRIES_JSON PACKAGES_JSON}"
   local dockerfile_entries_json="${2:-[]}"
-  local packages_json="${3:?Usage: update_pypi_packages CONFIG_ENTRIES_JSON DOCKERFILE_ENTRIES_JSON PACKAGES_JSON}"
+  local packages_json="${3:?Usage: update_huggingface_pypi_packages CONFIG_ENTRIES_JSON DOCKERFILE_ENTRIES_JSON PACKAGES_JSON}"
 
   local package_count
   package_count="$(echo "${packages_json}" | jq -r 'length')"
@@ -191,11 +191,11 @@ update_pypi_packages() {
     dockerfile_arg="$(echo "${packages_json}" | jq -r ".[$i].dockerfile_arg // empty")"
 
     if [[ -z "${package_name}" || "${package_name}" == "null" ]]; then
-      echo "Error: pypi_packages[$i] missing package" >&2
+      echo "Error: huggingface_pypi_packages[$i] missing package" >&2
       return 1
     fi
     if [[ -z "${config_key}" || "${config_key}" == "null" ]]; then
-      echo "Error: pypi_packages[$i] missing config_key" >&2
+      echo "Error: huggingface_pypi_packages[$i] missing config_key" >&2
       return 1
     fi
 
