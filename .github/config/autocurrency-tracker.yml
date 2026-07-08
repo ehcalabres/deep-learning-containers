@@ -35,6 +35,16 @@ frameworks:
     dockerfiles:
       - path: "docker/huggingface/vllm/Dockerfile"
         base_image_template: "public.ecr.aws/deep-learning-containers/vllm:{version}-gpu-py312-cu130-ubuntu22.04-sagemaker-v1.0"
+    pypi_packages:
+      - package: "transformers"
+        config_key: "transformers_version"
+        dockerfile_arg: "TRANSFORMERS_VERSION"
+      - package: "huggingface-hub"
+        config_key: "huggingface_hub_version"
+        dockerfile_arg: "HUGGINGFACE_HUB_VERSION"
+      - package: "hf-xet"
+        config_key: "hf_xet_version"
+        dockerfile_arg: "HF_XET_VERSION"
     version_detection: true
 
   sglang:

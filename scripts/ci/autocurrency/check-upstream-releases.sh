@@ -245,6 +245,21 @@ for framework in ${FRAMEWORKS}; do
     fi
 
     # -----------------------------------------------------------------
+    # Update configured PyPI package pins if configured
+    # -----------------------------------------------------------------
+    has_pypi_packages=$(yq eval ".frameworks.${framework}.pypi_packages // null" "${TRACKER_FILE}")
+    if [[ "${has_pypi_packages}" != "null" ]]; then
+      package_entries_json=$(yq eval -o=json ".frameworks.${framework}.pypi_packages" "${TRACKER_FILE}")
+      dockerfile_entries_json=$(yq eval -o=json ".frameworks.${framework}.dockerfiles // []" "${TRACKER_FILE}")
+      package_updates=$(update_pypi_packages "${config_entries_json}" "${dockerfile_entries_json}" "${package_entries_json}")
+      if [[ -n "${package_updates}" ]]; then
+        updated_files="${updated_files}"$'\n'"${package_updates}"
+        echo "${framework}: Updated PyPI package pins:"
+        echo "${package_updates}"
+      fi
+    fi
+
+    # -----------------------------------------------------------------
     # Rename test setup script if configured
     # -----------------------------------------------------------------
     has_test_setup=$(yq eval ".frameworks.${framework}.test_setup_script // null" "${TRACKER_FILE}")

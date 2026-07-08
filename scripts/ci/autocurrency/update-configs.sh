@@ -127,6 +127,130 @@ update_dockerfiles() {
 }
 
 ###############################################################################
+# get_latest_pypi_version(package_name)
+#   Fetches the latest version for a package from the PyPI JSON API.
+#   Echoes the version string from info.version.
+#
+#   Arguments:
+#     package_name — PyPI package name (e.g., "transformers")
+###############################################################################
+get_latest_pypi_version() {
+  local package_name="${1:?Usage: get_latest_pypi_version PACKAGE_NAME}"
+
+  local response
+  response=$(curl -fsSL "https://pypi.org/pypi/${package_name}/json")
+
+  local version
+  version=$(echo "${response}" | jq -r '.info.version // empty')
+
+  if [[ -z "${version}" ]]; then
+    echo "Error: could not resolve latest PyPI version for ${package_name}" >&2
+    return 1
+  fi
+
+  echo "${version}"
+}
+
+###############################################################################
+# update_pypi_packages(config_entries_json, dockerfile_entries_json, packages_json)
+#   Updates configured build.<config_key> version pins in image config files and
+#   matching Dockerfile ARG defaults from the latest PyPI package versions.
+#   Echoes the list of updated file paths (one per line).
+#
+#   Arguments:
+#     config_entries_json     — JSON array of config entries with "path"
+#     dockerfile_entries_json — JSON array of Dockerfile entries with "path"
+#     packages_json          — JSON array of package mappings:
+#                              package, config_key, dockerfile_arg
+###############################################################################
+update_pypi_packages() {
+  local config_entries_json="${1:?Usage: update_pypi_packages CONFIG_ENTRIES_JSON DOCKERFILE_ENTRIES_JSON PACKAGES_JSON}"
+  local dockerfile_entries_json="${2:-[]}"
+  local packages_json="${3:?Usage: update_pypi_packages CONFIG_ENTRIES_JSON DOCKERFILE_ENTRIES_JSON PACKAGES_JSON}"
+
+  local package_count
+  package_count="$(echo "${packages_json}" | jq -r 'length')"
+
+  if [[ "${package_count}" -eq 0 ]]; then
+    return 0
+  fi
+
+  local updated_files=""
+  local config_count
+  config_count="$(echo "${config_entries_json}" | jq -r 'length')"
+
+  if [[ "${config_count}" -eq 0 ]]; then
+    echo "Error: no config entries provided for PyPI package updates" >&2
+    return 1
+  fi
+
+  for i in $(seq 0 $(( package_count - 1 ))); do
+    local package_name config_key dockerfile_arg latest_version
+    package_name="$(echo "${packages_json}" | jq -r ".[$i].package")"
+    config_key="$(echo "${packages_json}" | jq -r ".[$i].config_key")"
+    dockerfile_arg="$(echo "${packages_json}" | jq -r ".[$i].dockerfile_arg // empty")"
+
+    if [[ -z "${package_name}" || "${package_name}" == "null" ]]; then
+      echo "Error: pypi_packages[$i] missing package" >&2
+      return 1
+    fi
+    if [[ -z "${config_key}" || "${config_key}" == "null" ]]; then
+      echo "Error: pypi_packages[$i] missing config_key" >&2
+      return 1
+    fi
+
+    latest_version="$(get_latest_pypi_version "${package_name}")"
+    echo "Latest ${package_name}: ${latest_version}" >&2
+
+    for j in $(seq 0 $(( config_count - 1 ))); do
+      local config_path current_version
+      config_path="$(echo "${config_entries_json}" | jq -r ".[$j].path")"
+
+      if [[ ! -f "${config_path}" ]]; then
+        echo "Error: config file not found: ${config_path}" >&2
+        return 1
+      fi
+
+      current_version="$(yq eval ".build.${config_key} // \"\"" "${config_path}")"
+      if [[ "${current_version}" != "${latest_version}" ]]; then
+        echo "  ${config_path}: ${config_key} ${current_version:-unset} -> ${latest_version}" >&2
+        yq eval -i ".build.${config_key} = \"${latest_version}\"" "${config_path}"
+        updated_files="${updated_files}"$'\n'"${config_path}"
+      fi
+    done
+
+    if [[ -n "${dockerfile_arg}" ]]; then
+      local dockerfile_count
+      dockerfile_count="$(echo "${dockerfile_entries_json}" | jq -r 'length')"
+
+      if [[ "${dockerfile_count}" -eq 0 ]]; then
+        echo "Warning: no Dockerfiles configured for ${dockerfile_arg}" >&2
+        continue
+      fi
+
+      for j in $(seq 0 $(( dockerfile_count - 1 ))); do
+        local dockerfile_path
+        dockerfile_path="$(echo "${dockerfile_entries_json}" | jq -r ".[$j].path")"
+
+        if [[ ! -f "${dockerfile_path}" ]]; then
+          echo "Error: Dockerfile not found: ${dockerfile_path}" >&2
+          return 1
+        fi
+
+        if grep -qE "^ARG ${dockerfile_arg}=" "${dockerfile_path}"; then
+          sed -i "s|^ARG ${dockerfile_arg}=.*|ARG ${dockerfile_arg}=${latest_version}|" "${dockerfile_path}"
+          updated_files="${updated_files}"$'\n'"${dockerfile_path}"
+        else
+          echo "Warning: ARG ${dockerfile_arg}= not found in ${dockerfile_path}" >&2
+        fi
+      done
+    fi
+  done
+
+  echo "${updated_files}" | sed '/^$/d' | sort -u
+}
+
+###############################################################################
 # rename_test_setup_script(old_version, new_version, test_setup_config_json)
 #   Renames a version-named test setup script from the old version pattern to
 #   the new version pattern using `git mv`, then updates all workflow file
