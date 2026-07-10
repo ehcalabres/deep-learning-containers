@@ -42,7 +42,7 @@ if [[ -n "${MODEL_DIR:-}" ]]; then
 
   if [[ -f "${MODEL_DIR}/requirements.txt" ]]; then
     echo "INFO: Installing custom dependencies from ${MODEL_DIR}/requirements.txt"
-    uv pip install --active -r "${MODEL_DIR}/requirements.txt" --no-cache-dir
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" -r "${MODEL_DIR}/requirements.txt" --no-cache-dir
   fi
 fi
 

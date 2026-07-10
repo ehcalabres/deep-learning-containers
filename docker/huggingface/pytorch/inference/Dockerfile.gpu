@@ -74,13 +74,13 @@ RUN git clone https://github.com/huggingface/hf-serve.git "${HF_SERVE_HOME}" \
 WORKDIR /home/huggingface/app
 RUN --mount=type=cache,target=/home/huggingface/.cache/uv,uid=1001,gid=1001 \
   uv sync --active --frozen --extra cuda-130 --extra flash-attn --preview-features extra-build-dependencies \
-  && uv pip install --active --upgrade \
+  && uv pip install --python "${VIRTUAL_ENV}/bin/python" --upgrade \
     --index-url "${PYTORCH_INDEX_URL}" \
     --extra-index-url https://pypi.org/simple \
     "torch==${TORCH_VERSION}" \
     torchvision \
     torchcodec \
-  && uv pip install --active --upgrade \
+  && uv pip install --python "${VIRTUAL_ENV}/bin/python" --upgrade \
     "transformers[accelerate,audio,chat_template,kernels,timm,vision]==${TRANSFORMERS_VERSION}" \
   && uv cache clean
 
