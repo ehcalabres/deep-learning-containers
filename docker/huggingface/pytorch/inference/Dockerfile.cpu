@@ -42,6 +42,7 @@ RUN apt-get update \
     build-essential \
     git \
     ${PYTHON} \
+    ${PYTHON}-dev \
     ${PYTHON}-venv \
     ffmpeg=7:* \
     libmagic-dev \
