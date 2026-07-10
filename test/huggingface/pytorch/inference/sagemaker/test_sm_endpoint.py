@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from pprint import pformat
 
 import boto3
@@ -38,6 +39,13 @@ def _cleanup(resources):
             LOGGER.warning(f"Cleanup {type(resource).__name__} failed: {e}")
 
 
+def _get_hf_token(aws_session):
+    token = os.getenv("HF_TOKEN")
+    if token:
+        return token
+    return get_hf_token(aws_session)
+
+
 @pytest.fixture(scope="function")
 def model_endpoint(aws_session, image_uri, model_config):
     model_id = model_config["model_id"]
@@ -47,7 +55,7 @@ def model_endpoint(aws_session, image_uri, model_config):
     LOGGER.info(f"Using image: {image_uri}")
     LOGGER.info(f"Model ID: {model_id}")
 
-    hf_token = get_hf_token(aws_session)
+    hf_token = _get_hf_token(aws_session)
     role_arn = aws_session.resolve_role_arn(SAGEMAKER_ROLE)
     env = {
         "MODEL_ID": model_id,
@@ -162,11 +170,6 @@ def test_asr_endpoint(model_endpoint):
         ContentType="application/json",
         Accept="application/json",
         CustomAttributes="route=/predict-json",
-    )
-    body = json.loads(result["Body"].read())
-    LOGGER.info(f"Model response: {pformat(body)}")
-
-    assert body.get("text", "").strip(), "Transcription text is empty"
     )
     body = json.loads(result["Body"].read())
     LOGGER.info(f"Model response: {pformat(body)}")
