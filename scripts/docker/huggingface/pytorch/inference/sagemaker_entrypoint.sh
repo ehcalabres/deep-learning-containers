@@ -19,6 +19,10 @@ if [[ -z "${TASK:-}" && -n "${HF_TASK:-}" ]]; then
   export TASK="${HF_TASK}"
 fi
 
+if [[ "${1:-}" == "serve" ]]; then
+  shift
+fi
+
 ARGS=(--host "${SM_HF_SERVE_HOST:-0.0.0.0}" --port "${SM_HF_SERVE_PORT:-8080}")
 PREFIX="SM_HF_SERVE_"
 ARG_PREFIX="--"

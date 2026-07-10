@@ -46,4 +46,8 @@ if [[ -n "${MODEL_DIR:-}" ]]; then
   fi
 fi
 
+if [[ "${1:-}" == "serve" ]]; then
+  shift
+fi
+
 exec hf-serve "$@"
