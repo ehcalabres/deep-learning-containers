@@ -76,8 +76,7 @@ RUN --mount=type=cache,target=/home/huggingface/.cache/uv,uid=1001,gid=1001 \
     torchvision \
     "torchcodec<0.6" \
   && uv pip install --python "${VIRTUAL_ENV}/bin/python" --upgrade \
-    "transformers[accelerate,audio,chat_template,kernels,timm,vision]==${TRANSFORMERS_VERSION}" \
-  && uv cache clean
+    "transformers[accelerate,audio,chat_template,kernels,timm,vision]==${TRANSFORMERS_VERSION}"
 
 USER root
 WORKDIR /
