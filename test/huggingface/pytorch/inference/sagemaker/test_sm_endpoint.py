@@ -7,6 +7,11 @@ from pprint import pformat
 
 import boto3
 import pytest
+from sagemaker.core.resources import Endpoint
+from sagemaker.core.resources import EndpointConfig
+from sagemaker.core.resources import Model
+from sagemaker.core.shapes import ContainerDefinition
+from sagemaker.core.shapes import ProductionVariant
 from test_utils import clean_string
 from test_utils import random_suffix_name
 from test_utils.constants import INFERENCE_AMI_VERSION
@@ -34,46 +39,33 @@ def _get_hf_token(aws_session):
     return get_hf_token(aws_session)
 
 
+def _cleanup(resources):
+    for resource in resources:
+        if resource is None:
+            continue
+        try:
+            resource.delete()
+        except Exception as e:
+            LOGGER.warning(f"Cleanup {type(resource).__name__} failed: {e}")
+
+
 def _build_production_variant(model_name):
-    return {
-        "VariantName": "AllTraffic",
-        "ModelName": model_name,
-        "InitialInstanceCount": 1,
-        "InstanceType": INSTANCE_TYPE,
-        "InferenceAmiVersion": INFERENCE_AMI_VERSION,
-        "ContainerStartupHealthCheckTimeoutInSeconds": STARTUP_HEALTH_CHECK_TIMEOUT,
-    }
+    return ProductionVariant(
+        variant_name="AllTraffic",
+        model_name=model_name,
+        initial_instance_count=1,
+        instance_type=INSTANCE_TYPE,
+        inference_ami_version=INFERENCE_AMI_VERSION,
+        container_startup_health_check_timeout_in_seconds=STARTUP_HEALTH_CHECK_TIMEOUT,
+    )
 
 
-def _delete_endpoint(sagemaker_client, endpoint_name):
-    if not endpoint_name:
-        return
+def _wait_for_endpoint(endpoint):
     try:
-        sagemaker_client.delete_endpoint(EndpointName=endpoint_name)
-        sagemaker_client.get_waiter("endpoint_deleted").wait(
-            EndpointName=endpoint_name,
-            WaiterConfig={"Delay": 30, "MaxAttempts": 20},
-        )
+        endpoint.wait_for_status("InService", timeout=ENDPOINT_WAIT_TIMEOUT)
     except Exception as e:
-        LOGGER.warning(f"Cleanup endpoint failed: {e}")
-
-
-def _delete_endpoint_config(sagemaker_client, endpoint_config_name):
-    if not endpoint_config_name:
-        return
-    try:
-        sagemaker_client.delete_endpoint_config(EndpointConfigName=endpoint_config_name)
-    except Exception as e:
-        LOGGER.warning(f"Cleanup endpoint config failed: {e}")
-
-
-def _delete_model(sagemaker_client, model_name):
-    if not model_name:
-        return
-    try:
-        sagemaker_client.delete_model(ModelName=model_name)
-    except Exception as e:
-        LOGGER.warning(f"Cleanup model failed: {e}")
+        LOGGER.error("Endpoint deployment failed: %s", e)
+        raise
 
 
 @pytest.fixture(scope="function")
@@ -86,8 +78,6 @@ def model_endpoint(aws_session, image_uri, model_config):
     LOGGER.info(f"Using image: {image_uri}")
     LOGGER.info(f"Model ID: {model_id}")
 
-    sagemaker_client = aws_session.sagemaker
-
     hf_token = _get_hf_token(aws_session)
     role_arn = aws_session.resolve_role_arn(SAGEMAKER_ROLE)
     env = {
@@ -97,46 +87,35 @@ def model_endpoint(aws_session, image_uri, model_config):
     }
     env.update(model_config.get("env", {}))
 
-    model_created = endpoint_config_created = endpoint_created = False
+    model = endpoint_config = endpoint = None
     try:
         LOGGER.info(f"Creating model: {model_name}")
-        sagemaker_client.create_model(
-            ModelName=model_name,
-            PrimaryContainer={
-                "Image": image_uri,
-                "Environment": env,
-            },
-            ExecutionRoleArn=role_arn,
+        model = Model.create(
+            model_name=model_name,
+            primary_container=ContainerDefinition(
+                image=image_uri,
+                environment=env,
+            ),
+            execution_role_arn=role_arn,
         )
-        model_created = True
 
         LOGGER.info(f"Creating endpoint config: {endpoint_name}")
-        sagemaker_client.create_endpoint_config(
-            EndpointConfigName=endpoint_name,
-            ProductionVariants=[_build_production_variant(model_name)],
+        endpoint_config = EndpointConfig.create(
+            endpoint_config_name=endpoint_name,
+            production_variants=[_build_production_variant(model_name)],
         )
-        endpoint_config_created = True
 
         LOGGER.info(f"Deploying endpoint: {endpoint_name}")
-        sagemaker_client.create_endpoint(
-            EndpointName=endpoint_name,
-            EndpointConfigName=endpoint_name,
+        endpoint = Endpoint.create(
+            endpoint_name=endpoint_name,
+            endpoint_config_name=endpoint_name,
         )
-        endpoint_created = True
-        sagemaker_client.get_waiter("endpoint_in_service").wait(
-            EndpointName=endpoint_name,
-            WaiterConfig={"Delay": 30, "MaxAttempts": ENDPOINT_WAIT_TIMEOUT // 30},
-        )
+        _wait_for_endpoint(endpoint)
         LOGGER.info("Endpoint deployment completed successfully")
 
         yield {"name": endpoint_name, "config": model_config}
     finally:
-        if endpoint_created:
-            _delete_endpoint(sagemaker_client, endpoint_name)
-        if endpoint_config_created:
-            _delete_endpoint_config(sagemaker_client, endpoint_name)
-        if model_created:
-            _delete_model(sagemaker_client, model_name)
+        _cleanup([endpoint, endpoint_config, model])
 
 
 @pytest.mark.parametrize(
