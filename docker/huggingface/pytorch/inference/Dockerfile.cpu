@@ -7,10 +7,11 @@ FROM ubuntu:${UBUNTU_VERSION} AS base
 
 ARG DLC_MAJOR_VERSION=1
 ARG DLC_MINOR_VERSION=0
-ARG FRAMEWORK=huggingface-pytorch-inference
+ARG FRAMEWORK=huggingface-pytorch
+ARG FRAMEWORK_VERSION=2.13.0
 ARG TORCH_VERSION=2.13.0
 ARG TRANSFORMERS_VERSION=5.13.0
-ARG HF_SERVE_REF=main
+ARG HF_SERVE_REF=f0ca195900fa29e46a965d47de557df7e3e6733b
 ARG PYTHON=python3.12
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 
@@ -18,7 +19,7 @@ LABEL maintainer="Hugging Face"
 LABEL dlc_major_version="${DLC_MAJOR_VERSION}"
 LABEL dlc_minor_version="${DLC_MINOR_VERSION}"
 LABEL framework="${FRAMEWORK}"
-LABEL framework_version="${TORCH_VERSION}"
+LABEL framework_version="${FRAMEWORK_VERSION}"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -94,7 +95,7 @@ RUN chmod +x /usr/local/bin/deep_learning_container.py \
     /usr/local/bin/hf_serve_entrypoint.sh \
     /usr/local/bin/sagemaker_entrypoint.sh \
   && sed -e "s/{{FRAMEWORK}}/${FRAMEWORK}/g" \
-    -e "s/{{FRAMEWORK_VERSION}}/${TORCH_VERSION}/g" \
+    -e "s/{{FRAMEWORK_VERSION}}/${FRAMEWORK_VERSION}/g" \
     -e "s/{{CONTAINER_TYPE}}/${CONTAINER_TYPE}/g" \
     /tmp/bash_telemetry.sh.template >/usr/local/bin/bash_telemetry.sh \
   && chmod +x /usr/local/bin/bash_telemetry.sh \
