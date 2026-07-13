@@ -11,6 +11,7 @@ from sagemaker.core.resources import Endpoint
 from sagemaker.core.resources import EndpointConfig
 from sagemaker.core.resources import Model
 from sagemaker.core.shapes import ContainerDefinition
+from sagemaker.core.shapes import InstancePool
 from sagemaker.core.shapes import ProductionVariant
 from test_utils import clean_string
 from test_utils import random_suffix_name
@@ -22,6 +23,10 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
 
 ASR_SAMPLE_URL = "https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/1.flac"
+STARTUP_HEALTH_CHECK_TIMEOUT = 3600
+ENDPOINT_WAIT_TIMEOUT = 4200
+INSTANCE_PROVISION_TIMEOUT = 1800
+INSTANCE_POOLS = ("ml.g6.xlarge", "ml.g5.xlarge")
 
 
 @pytest.fixture(scope="function")
@@ -44,6 +49,25 @@ def _get_hf_token(aws_session):
     if token:
         return token
     return get_hf_token(aws_session)
+
+
+def _build_instance_pools():
+    return [
+        InstancePool(instance_type=instance_type, priority=priority)
+        for priority, instance_type in enumerate(INSTANCE_POOLS, start=1)
+    ]
+
+
+def _build_production_variant(endpoint_name):
+    return ProductionVariant(
+        variant_name="AllTraffic",
+        model_name=endpoint_name,
+        initial_instance_count=1,
+        instance_pools=_build_instance_pools(),
+        inference_ami_version=INFERENCE_AMI_VERSION,
+        container_startup_health_check_timeout_in_seconds=STARTUP_HEALTH_CHECK_TIMEOUT,
+        variant_instance_provision_timeout_in_seconds=INSTANCE_PROVISION_TIMEOUT,
+    )
 
 
 @pytest.fixture(scope="function")
@@ -79,16 +103,7 @@ def model_endpoint(aws_session, image_uri, model_config):
         LOGGER.info(f"Creating endpoint config: {endpoint_name}")
         endpoint_config = EndpointConfig.create(
             endpoint_config_name=endpoint_name,
-            production_variants=[
-                ProductionVariant(
-                    variant_name="AllTraffic",
-                    model_name=endpoint_name,
-                    initial_instance_count=1,
-                    instance_type=model_config["instance_type"],
-                    inference_ami_version=INFERENCE_AMI_VERSION,
-                    container_startup_health_check_timeout_in_seconds=900,
-                ),
-            ],
+            production_variants=[_build_production_variant(endpoint_name)],
         )
 
         LOGGER.info(f"Deploying endpoint: {endpoint_name}")
@@ -96,7 +111,7 @@ def model_endpoint(aws_session, image_uri, model_config):
             endpoint_name=endpoint_name,
             endpoint_config_name=endpoint_name,
         )
-        endpoint.wait_for_status("InService")
+        endpoint.wait_for_status("InService", timeout=ENDPOINT_WAIT_TIMEOUT)
         LOGGER.info("Endpoint deployment completed successfully")
 
         yield {"name": endpoint_name, "config": model_config}
@@ -110,7 +125,6 @@ def model_endpoint(aws_session, image_uri, model_config):
         {
             "model_id": "LiquidAI/LFM2.5-230M",
             "task": "text-generation",
-            "instance_type": "ml.g6.xlarge",
             "env": {"DTYPE": "bfloat16"},
         },
     ],
@@ -151,7 +165,6 @@ def test_text_generation_endpoint(model_endpoint):
         {
             "model_id": "nvidia/parakeet-tdt-0.6b-v3",
             "task": "automatic-speech-recognition",
-            "instance_type": "ml.g6.xlarge",
             "env": {"DTYPE": "bfloat16"},
         },
     ],
